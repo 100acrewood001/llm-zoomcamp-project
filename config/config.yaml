@@ -1,0 +1,58 @@
+# Azure OpenAI Configuration
+azure:
+  openai:
+    endpoint: "https://your-openai-resource.openai.azure.com/"
+    api_version: "2024-02-01"
+    # Keys will be loaded from environment variables or Azure Key Vault
+    embedding_deployment: "text-embedding-ada-002"
+    chat_deployment: "gpt-4"
+    max_tokens: 4000
+    temperature: 0.1
+  
+  # Azure Key Vault (optional - for production)
+  key_vault:
+    vault_url: "https://your-keyvault.vault.azure.net/"
+
+# RAG Configuration
+rag:
+  chunking:
+    strategy: "recursive"
+    chunk_size: 1000
+    chunk_overlap: 200
+    separators: ["\n\n", "\n", ". ", " "]
+  
+  retrieval:
+    top_k: 5
+    score_threshold: 0.7
+  
+  vector_store:
+    type: "faiss"
+    index_type: "flat"  # Can be "flat" or "ivf" 
+    persist_directory: "./data/faiss_index"
+
+# Document Processing
+document_processing:
+  supported_formats: ["pdf", "docx"]
+  max_file_size_mb: 50
+  extract_tables: false  # Will be enabled in Phase 2
+  extract_images: false  # Future enhancement
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+  cors_origins: ["*"]
+  max_request_size_mb: 100
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "json"
+  log_file: "./logs/app.log"
+
+# Performance Settings
+performance:
+  embedding_batch_size: 20
+  max_concurrent_requests: 10
+  request_timeout_seconds: 300
