@@ -6,8 +6,13 @@ Handles loading configuration from YAML files and environment variables.
 import os
 import yaml
 from typing import Dict, Any, Optional
-from pydantic import BaseSettings, Field
+from pydantic_settings import BaseSettings
+from pydantic import Field
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class AzureOpenAISettings(BaseSettings):

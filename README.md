@@ -2,47 +2,282 @@
 
 An intelligent document analysis system that uses Azure OpenAI to extract insights from financial documents, particularly annual reports.
 
-## 🚀 Quick Start
+## 🚀 Quick Start Guide
 
-### 1. Setup Environment
+### Prerequisites
+- Python 3.8+ installed on your system
+- Azure OpenAI subscription with deployed models:
+  - GPT-4 (or GPT-4o) for chat completion
+  - text-embedding-ada-002 for embeddings
+- Git (for cloning the repository)
+
+### Step 1: Clone and Setup Environment
+
 ```bash
-# Run the setup script
+# Clone the repository
+git clone https://github.com/100acrewood001/llm-zoomcamp-project.git
+cd llm-zoomcamp-project
+
+# Create and activate virtual environment
+python -m venv venv
+
+# Activate virtual environment:
+# On Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# On Windows (Command Prompt):
+.\venv\Scripts\activate.bat
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Step 2: Configure Azure OpenAI Credentials
+
+1. **Copy the environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit the `.env` file** with your actual Azure OpenAI credentials:
+   ```env
+   # Replace with your actual Azure OpenAI resource details:
+   AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+   AZURE_OPENAI_API_KEY=your-32-character-api-key-here
+   AZURE_OPENAI_API_VERSION=2024-02-01
+   AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+   AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4
+   ```
+
+3. **How to get Azure OpenAI credentials:**
+   - Go to [Azure Portal](https://portal.azure.com)
+   - Navigate to your Azure OpenAI resource
+   - Go to "Keys and Endpoint" section
+   - Copy the endpoint URL and one of the API keys
+   - Ensure you have deployed both models (GPT-4 and text-embedding-ada-002)
+
+### Step 3: Test Your Setup
+
+```bash
+# Test configuration (should show no errors if properly configured)
+python -c "from src.utils.config import get_config; print('✅ Configuration loaded successfully')"
+
+# Run the setup validation script
 python setup.py
 ```
 
-### 2. Configure Azure OpenAI
-Edit `.env` file with your Azure OpenAI credentials:
-```env
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
-```
+### Step 4: Run the Application
 
-### 3. Run the Application
-
-**Interactive Mode:**
+**Option A: Interactive CLI Mode**
 ```bash
 python main.py
 ```
 
-**API Server Mode:**
+**Option B: API Server Mode**
 ```bash
 python main.py --api
+# Server will start at http://localhost:8000
+# API documentation available at http://localhost:8000/docs
 ```
 
-## 📋 Features
+## 🎯 Getting Started - Your First Analysis
 
-### Core Capabilities
-- **PDF Document Processing**: Extract and analyze text from annual reports
-- **Intelligent Chunking**: Smart text segmentation optimized for financial documents
-- **Vector Search**: FAISS-powered semantic search across document content
-- **AI-Powered Q&A**: Natural language queries with context-aware responses
-- **REST API**: Complete web API for integration with other systems
-- **Interactive CLI**: Command-line interface for easy document management
+### Using Interactive Mode
 
-### Financial Document Optimization
-- Specialized chunking for financial tables and metrics
-- Risk factor identification and categorization
+1. **Start the application:**
+   ```bash
+   python main.py
+   ```
+
+2. **Upload your first document:**
+   ```
+   > upload path/to/your/annual_report.pdf
+   ```
+
+3. **Ask questions about your document:**
+   ```
+   > query What was the total revenue for 2024?
+   > query What are the main risk factors mentioned?
+   > query How did operating expenses change year over year?
+   ```
+
+4. **Check system status:**
+   ```
+   > stats      # View document and query statistics
+   > health     # Check system health
+   > list       # Show all uploaded documents
+   > quit       # Exit the application
+   ```
+
+### Using API Mode
+
+1. **Start the API server:**
+   ```bash
+   python main.py --api
+   ```
+
+2. **Upload a document via API:**
+   ```bash
+   curl -X POST "http://localhost:8000/documents/upload" \
+     -H "Content-Type: multipart/form-data" \
+     -F "file=@/path/to/annual_report.pdf"
+   ```
+
+3. **Query your document:**
+   ```bash
+   curl -X POST "http://localhost:8000/documents/query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "What was the revenue growth in 2024?"}'
+   ```
+
+4. **Access interactive API documentation:**
+   - Open your browser to: `http://localhost:8000/docs`
+   - Test all endpoints directly from the browser interface
+
+## 📋 Features & Capabilities
+
+### 🎯 Core Features
+- **📄 PDF Document Processing**: Extract and analyze text from annual reports with metadata preservation
+- **🧠 Intelligent Chunking**: Smart text segmentation optimized for financial documents and tables
+- **🔍 Vector Search**: FAISS-powered semantic search across document content
+- **💬 AI-Powered Q&A**: Natural language queries with context-aware responses and citations
+- **🌐 REST API**: Complete web API for integration with other systems
+- **💻 Interactive CLI**: User-friendly command-line interface for document management
+
+### 🏦 Financial Document Optimization
+- **📊 Table Recognition**: Specialized chunking preserves financial table structures
+- **⚠️ Risk Factor Analysis**: Automatic identification and categorization of risk factors
+- **💰 Financial Metrics**: Revenue, profit, and performance data extraction with context
+- **📖 Citation Support**: All answers include source document and page references
+- **📈 Multi-Year Analysis**: Compare metrics across different reporting periods
+
+### 🔧 Technical Features
+- **⚡ Fast Vector Search**: In-memory FAISS index for sub-second query responses
+- **🔄 Async Processing**: Non-blocking operations for better performance
+- **📝 Structured Logging**: JSON-formatted logs with performance metrics
+- **🛡️ Error Handling**: Comprehensive error handling with graceful degradation
+- **⚙️ Configurable Settings**: Extensive configuration options via YAML and environment variables
+
+## 💡 Usage Examples & Best Practices
+
+### Example Questions You Can Ask
+
+**Financial Performance:**
+```
+"What was the total revenue for 2024?"
+"How did operating expenses change compared to last year?"
+"What is the company's profit margin?"
+"Show me the key financial highlights for this quarter."
+```
+
+**Risk Analysis:**
+```
+"What are the main risk factors mentioned in the report?"
+"Are there any new regulatory risks identified?"
+"What operational risks does the company face?"
+"How has the risk profile changed from previous years?"
+```
+
+**Strategic Analysis:**
+```
+"What are the company's growth strategies?"
+"Which business segments performed best?"
+"What investments is the company making?"
+"What are the management's outlook statements?"
+```
+
+**Comparative Analysis:**
+```
+"Compare this year's revenue to last year."
+"How have margins improved over time?"
+"What trends can you identify in the financial data?"
+"Which metrics show the most significant changes?"
+```
+
+### Best Practices for Document Upload
+
+**Optimal Document Types:**
+- ✅ **Annual Reports (10-K, 10-Q)**: Full financial statements with comprehensive data
+- ✅ **Earnings Reports**: Quarterly performance summaries
+- ✅ **Financial Statements**: Balance sheets, income statements, cash flow
+- ✅ **Investor Presentations**: Management discussion and analysis
+
+**File Preparation Tips:**
+- 📄 **File Size**: Keep under 50MB for optimal performance
+- 📝 **Text Quality**: Ensure PDFs are text-based, not scanned images
+- 🏷️ **File Names**: Use descriptive names (e.g., "AAPL_Annual_Report_2024.pdf")
+- 📅 **Organization**: Group documents by company and year for easier management
+
+### API Integration Examples
+
+**Python Integration:**
+```python
+import requests
+
+# Upload document
+def upload_document(file_path):
+    with open(file_path, 'rb') as f:
+        files = {'file': f}
+        response = requests.post('http://localhost:8000/documents/upload', files=files)
+    return response.json()
+
+# Query document
+def query_document(question):
+    data = {'query': question}
+    response = requests.post('http://localhost:8000/documents/query', json=data)
+    return response.json()
+
+# Example usage
+result = upload_document('annual_report_2024.pdf')
+answer = query_document('What was the revenue growth?')
+print(f"Answer: {answer['answer']}")
+```
+
+**JavaScript Integration:**
+```javascript
+// Upload document
+async function uploadDocument(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch('http://localhost:8000/documents/upload', {
+        method: 'POST',
+        body: formData
+    });
+    return await response.json();
+}
+
+// Query document
+async function queryDocument(question) {
+    const response = await fetch('http://localhost:8000/documents/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: question })
+    });
+    return await response.json();
+}
+```
+
+### Performance Optimization Tips
+
+**For Large Documents:**
+1. **Reduce chunk size** in configuration (500-750 characters)
+2. **Increase overlap** for better context (150-250 characters)
+3. **Process in batches** if uploading multiple documents
+4. **Monitor memory usage** and restart if needed
+
+**For Better Accuracy:**
+1. **Use specific questions** rather than general queries
+2. **Include relevant keywords** in your questions
+3. **Reference specific sections** when possible
+4. **Verify citations** in the source document
+
+**For API Performance:**
+1. **Use connection pooling** for multiple requests
+2. **Implement retry logic** for failed requests
+3. **Cache frequent queries** if appropriate
+4. **Monitor response times** and adjust configuration
 - Revenue and performance data extraction
 - Contextual citation support
 
@@ -91,54 +326,230 @@ curl -X POST "http://localhost:8000/documents/query" \
   -d '{"query": "What was the revenue growth in 2024?"}'
 ```
 
-## 🧪 Testing
+## 🧪 Testing Your Setup
 
-### Run Unit Tests
+### Validation Steps
+
+1. **Test Configuration Loading:**
+   ```bash
+   python -c "from src.utils.config import get_config; print('✅ Configuration loaded successfully')"
+   ```
+
+2. **Run Unit Tests:**
+   ```bash
+   # Activate virtual environment first
+   # On Windows: .\venv\Scripts\Activate.ps1
+   # On macOS/Linux: source venv/bin/activate
+   
+   pytest tests/ -v
+   ```
+
+3. **Run Integration Tests (requires Azure OpenAI setup):**
+   ```bash
+   pytest tests/ -m integration -v
+   ```
+
+4. **Test with Sample Document:**
+   - Download a sample annual report PDF
+   - Use the interactive mode to upload and query it
+   - Verify you get meaningful responses with citations
+
+### Manual Testing Checklist
+
+- [ ] Virtual environment activates without errors
+- [ ] All dependencies install successfully
+- [ ] Configuration loads without validation errors
+- [ ] Application starts in interactive mode
+- [ ] Application starts in API mode (port 8000)
+- [ ] Can upload a PDF document
+- [ ] Can query the uploaded document
+- [ ] Receives answers with proper citations
+- [ ] Health check returns "healthy" status
+
+## 🚨 Troubleshooting Guide
+
+### Common Issues and Solutions
+
+#### 1. Import Errors
+**Problem:** `ImportError` or `ModuleNotFoundError`
 ```bash
-pytest tests/ -v
+# Solution: Ensure virtual environment is activated and dependencies are installed
+.\venv\Scripts\Activate.ps1  # Windows
+pip install -r requirements.txt
 ```
 
-### Run Integration Tests
+#### 2. Pydantic Configuration Errors
+**Problem:** `ValidationError` for Azure OpenAI settings
 ```bash
-pytest tests/ -m integration -v
-```
-
-### Manual Testing
-1. Upload a sample PDF: Use a financial document or annual report
-2. Query the document: Ask questions about financial metrics, risks, or performance
-3. Check API endpoints: Test all REST API endpoints
-
-## ⚙️ Configuration
-
-### Main Configuration (`config/config.yaml`)
-```yaml
-rag:
-  chunk_size: 1000          # Text chunk size
-  chunk_overlap: 200        # Overlap between chunks
-  max_context_chunks: 5     # Max chunks for context
-
-api:
-  host: "127.0.0.1"        # API server host
-  port: 8000               # API server port
-  debug: false             # Debug mode
-
-azure_openai:
-  chat_deployment_name: "gpt-4"
-  embedding_deployment_name: "text-embedding-ada-002"
-  max_tokens: 1000         # Max response tokens
-  temperature: 0.1         # Response creativity
-```
-
-### Environment Variables (`.env`)
-```env
-# Azure OpenAI Configuration
+# Solution: Check your .env file has the correct format and values
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_API_KEY=your-actual-32-character-key
+```
 
-# Optional: Override configuration
-LOG_LEVEL=INFO
-MAX_FILE_SIZE_MB=50
+#### 3. Azure OpenAI Connection Issues
+**Problem:** Authentication or connection failures
+- ✅ Verify endpoint URL format (must end with `.openai.azure.com/`)
+- ✅ Check API key is valid and not expired
+- ✅ Ensure deployment names match your Azure resource exactly
+- ✅ Verify you have quota available for your deployments
+
+#### 4. Memory Issues with Large PDFs
+**Problem:** Out of memory errors with large documents
+```yaml
+# Solution: Reduce chunk size in config/config.yaml
+rag:
+  chunk_size: 500          # Reduced from 1000
+  chunk_overlap: 100       # Reduced from 200
+```
+
+#### 5. Port Already in Use
+**Problem:** `Address already in use` when starting API server
+```bash
+# Solution: Use a different port
+python main.py --api --port 8001
+```
+
+### Debug Mode
+
+Enable debug logging for detailed troubleshooting:
+
+1. **Edit `.env` file:**
+   ```env
+   LOG_LEVEL=DEBUG
+   DEBUG=true
+   ```
+
+2. **Check logs directory:**
+   ```bash
+   # Logs are saved to ./logs/ directory
+   ls -la logs/
+   ```
+
+### Getting Help
+
+1. **Check the logs** in the `./logs/` directory for detailed error information
+2. **Verify Azure OpenAI** deployments are active and have quota
+3. **Test with smaller PDF files** first (< 10MB)
+4. **Ensure Python 3.8+** is being used
+5. **Try the automated setup script:** `python setup.py`
+
+## ⚙️ Configuration Reference
+
+### Environment Variables (`.env` file)
+
+**Required Settings:**
+```env
+# Azure OpenAI - Required
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-32-character-api-key-here
+AZURE_OPENAI_API_VERSION=2024-02-01
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4
+```
+
+**Optional Settings:**
+```env
+# Application Settings
+LOG_LEVEL=INFO                    # DEBUG, INFO, WARNING, ERROR
+DEBUG=false                       # Enable/disable debug mode
+MAX_FILE_SIZE_MB=50              # Maximum PDF file size
+
+# API Configuration
+API_HOST=0.0.0.0                 # API server bind address
+API_PORT=8000                    # API server port
+
+# Performance Settings
+MAX_CONCURRENT_REQUESTS=10        # Concurrent request limit
+REQUEST_TIMEOUT_SECONDS=300       # Request timeout
+
+# Azure Key Vault (Optional - for enhanced security)
+AZURE_KEY_VAULT_URL=https://your-keyvault.vault.azure.net/
+```
+
+### Application Configuration (`config/config.yaml`)
+
+**Complete Configuration Options:**
+```yaml
+# RAG (Retrieval-Augmented Generation) Settings
+rag:
+  chunk_size: 1000              # Text chunk size in characters
+  chunk_overlap: 200            # Overlap between chunks
+  max_context_chunks: 5         # Max chunks to use for context
+  similarity_threshold: 0.7     # Minimum similarity for results
+  
+# API Server Settings
+api:
+  host: "127.0.0.1"            # Server bind address
+  port: 8000                   # Server port
+  debug: false                 # Debug mode
+  cors_origins: ["*"]          # CORS allowed origins
+  
+# Azure OpenAI Model Settings
+azure_openai:
+  chat_deployment_name: "gpt-4"              # Your GPT-4 deployment name
+  embedding_deployment_name: "text-embedding-ada-002"  # Embedding model
+  max_tokens: 4000                           # Max response tokens
+  temperature: 0.1                           # Response creativity (0-1)
+  top_p: 0.9                                # Nucleus sampling
+  frequency_penalty: 0.0                    # Frequency penalty
+  presence_penalty: 0.0                     # Presence penalty
+  
+# Document Processing Settings
+document:
+  max_file_size_mb: 50                      # Max file size
+  supported_formats: ["pdf"]               # Supported formats
+  text_extraction_method: "pymupdf"        # Extraction method
+  
+# Performance Settings
+performance:
+  batch_size: 16                           # Embedding batch size
+  max_retries: 3                           # API retry attempts
+  retry_delay: 1.0                         # Retry delay in seconds
+  timeout: 30                              # Request timeout
+  
+# Logging Settings
+logging:
+  level: "INFO"                            # Log level
+  format: "json"                           # Log format (json/text)
+  file: "logs/app.log"                     # Log file path
+  max_size_mb: 100                         # Max log file size
+  backup_count: 5                          # Number of backup files
+```
+
+### Configuration Priority
+
+Settings are loaded in this order (later overrides earlier):
+1. Default values in code
+2. `config/config.yaml` file
+3. Environment variables from `.env` file
+4. System environment variables
+5. Command-line arguments (where applicable)
+
+### Azure OpenAI Model Requirements
+
+| Model Type | Recommended Deployment | Purpose | Required |
+|------------|----------------------|---------|----------|
+| Chat | `gpt-4` or `gpt-4o` | Answer generation | ✅ Yes |
+| Chat Alternative | `gpt-35-turbo` | Cost-effective option | ⚠️ Alternative |
+| Embeddings | `text-embedding-ada-002` | Document search | ✅ Yes |
+| Embeddings Alternative | `text-embedding-3-small` | Newer model option | ⚠️ Alternative |
+
+### Configuration Validation
+
+Test your configuration:
+```bash
+# Basic configuration test
+python -c "from src.utils.config import get_config; print('✅ Config loaded')"
+
+# Full validation with Azure connection test
+python -c "
+from src.utils.config import get_config
+config = get_config()
+if config.validate_azure_config():
+    print('✅ Azure OpenAI configuration is valid')
+else:
+    print('❌ Azure OpenAI configuration needs attention')
+"
 ```
 
 ## 📊 System Requirements
@@ -232,13 +643,170 @@ llm-zoomcamp-project/
 - Audit logging
 - Performance monitoring
 
-## 🤝 Contributing
+## ❓ Frequently Asked Questions (FAQ)
 
+### General Questions
+
+**Q: What types of documents can I analyze?**
+A: Currently, the system supports PDF documents, specifically optimized for:
+- Annual Reports (10-K, 10-Q forms)
+- Financial Statements
+- Earnings Reports  
+- Investor Presentations
+- Any PDF containing structured financial information
+
+**Q: What's the maximum file size I can upload?**
+A: The default limit is 50MB, configurable via the `MAX_FILE_SIZE_MB` environment variable. For larger files, consider reducing the chunk size in the configuration.
+
+**Q: How accurate are the AI responses?**
+A: Accuracy depends on:
+- Quality of the source document (text-based PDFs work best)
+- Specificity of your questions
+- Relevance of the content to your query
+All responses include citations so you can verify information in the source document.
+
+### Technical Questions
+
+**Q: Which Azure OpenAI models do I need?**
+A: You need two deployments:
+- **GPT-4 or GPT-4o**: For generating responses
+- **text-embedding-ada-002**: For document search
+Both must be deployed in your Azure OpenAI resource.
+
+**Q: Can I use other AI models besides Azure OpenAI?**
+A: The current MVP is specifically built for Azure OpenAI. Support for other providers (OpenAI direct, Claude, etc.) would require code modifications.
+
+**Q: How much does it cost to run?**
+A: Costs depend on:
+- Azure OpenAI usage (embeddings + chat completions)
+- Document size and number of queries
+- Typically $0.01-$0.10 per document for processing
+- $0.001-$0.01 per query depending on complexity
+
+**Q: Is my data secure?**
+A: Yes, the system:
+- Processes documents locally on your machine
+- Only sends text chunks to Azure OpenAI for analysis
+- Doesn't store data permanently (in-memory processing)
+- Supports Azure Key Vault for credential management
+
+### Setup & Configuration
+
+**Q: I'm getting "ValidationError" for Azure OpenAI settings. What's wrong?**
+A: Check your `.env` file:
+1. Ensure `AZURE_OPENAI_ENDPOINT` ends with `.openai.azure.com/`
+2. Verify your API key is exactly 32 characters
+3. Confirm your deployment names match your Azure resource
+4. Test with: `python -c "from src.utils.config import get_config; get_config()"`
+
+**Q: The application starts but gives authentication errors. Help?**
+A: Common authentication issues:
+1. **API Key**: Ensure it's valid and not expired
+2. **Endpoint**: Must be the exact URL from Azure Portal
+3. **Deployments**: Model names must match your Azure deployments exactly
+4. **Quota**: Check you have available quota in Azure Portal
+
+**Q: How do I know if my virtual environment is set up correctly?**
+A: Run these validation commands:
+```bash
+# Check virtual environment
+which python  # Should show venv path
+
+# Check package installation  
+python -c "import openai, faiss, fastapi; print('✅ All packages installed')"
+
+# Check configuration
+python -c "from src.utils.config import get_config; print('✅ Configuration loaded')"
+```
+
+### Usage Questions
+
+**Q: What's the best way to ask questions?**
+A: For best results:
+- ✅ **Be specific**: "What was revenue in Q4 2024?" vs "Tell me about revenue"
+- ✅ **Use financial terms**: "operating margin", "EBITDA", "cash flow"
+- ✅ **Reference time periods**: "2024", "last year", "this quarter"
+- ✅ **Ask focused questions**: One concept per question
+
+**Q: Why are my answers sometimes incomplete or wrong?**
+A: Common issues:
+- **Document quality**: Scanned PDFs work poorly, use text-based PDFs
+- **Question clarity**: Vague questions get vague answers
+- **Content availability**: Information might not be in the document
+- **Context limits**: Very long documents may have relevant info excluded
+
+**Q: Can I analyze multiple documents at once?**
+A: The current MVP processes one document at a time. For multiple documents:
+1. Upload and process each separately
+2. Ask questions about each individually
+3. Future versions will support multi-document analysis
+
+### Performance & Troubleshooting
+
+**Q: The system is slow. How can I speed it up?**
+A: Performance optimization:
+1. **Reduce chunk size**: Edit `config/config.yaml`, set `chunk_size: 500`
+2. **Use smaller documents**: Under 10MB process faster
+3. **Specific queries**: Focused questions return faster
+4. **Check internet**: Azure OpenAI calls require good connectivity
+
+**Q: I'm running out of memory. What can I do?**
+A: Memory management:
+1. **Reduce chunk size** in configuration
+2. **Process smaller documents** (< 20MB)
+3. **Restart the application** periodically
+4. **Close other applications** to free RAM
+
+**Q: The API server won't start - "port already in use"?**
+A: Port conflicts:
+```bash
+# Use a different port
+python main.py --api --port 8001
+
+# Or kill the process using the port
+netstat -ano | findstr :8000  # Find process ID
+taskkill /PID <process_id> /F  # Kill on Windows
+```
+
+### Integration & Development
+
+**Q: How do I integrate this with my existing application?**
+A: Integration options:
+1. **REST API**: Use the HTTP endpoints (`/documents/upload`, `/documents/query`)
+2. **Python imports**: Import modules directly in Python applications  
+3. **CLI wrapper**: Call the command-line interface from other programs
+
+**Q: Can I customize the analysis for my specific industry?**
+A: Yes, you can:
+1. **Modify prompts**: Edit system prompts in the code
+2. **Adjust chunking**: Configure chunk sizes for your document types
+3. **Add business logic**: Extend the orchestrator for custom workflows
+4. **Fine-tune responses**: Adjust temperature and other model parameters
+
+**Q: How do I add support for other file formats?**
+A: Currently only PDF is supported. To add other formats:
+1. Create new extractor classes in `src/extractors/`
+2. Update configuration to include new formats
+3. Modify the upload validation logic
+4. Test with your specific file types
+
+### Future Development
+
+**Q: What features are planned for future releases?**
+A: Roadmap includes:
+- **Phase 2**: Advanced financial calculations, multi-document comparison
+- **Phase 3**: Web interface, visualization dashboards
+- **Phase 4**: Enterprise features, user management, audit logging
+
+**Q: Can I contribute to the project?**
+A: Absolutely! Contributions are welcome:
 1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+2. Create feature branches for new capabilities
+3. Add tests for your changes
+4. Submit pull requests with clear descriptions
+5. Follow the existing code patterns and documentation standards
+
+---
 
 ## 📄 License
 
@@ -247,10 +815,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🆘 Support
 
 For issues and questions:
-1. Check the troubleshooting section above
-2. Review logs for detailed error information
-3. Test with sample documents first
-4. Verify Azure OpenAI configuration
+1. **Check this FAQ section** for common solutions
+2. **Review the troubleshooting guide** above for technical issues  
+3. **Test with sample documents** to isolate problems
+4. **Verify Azure OpenAI configuration** using the validation commands
+5. **Check the logs** in `./logs/` directory for detailed error information
+
+**Getting More Help:**
+- 📖 Review the complete documentation above
+- 🔧 Run the setup validation: `python setup.py`
+- 🧪 Test with small, simple documents first
+- 📝 Enable debug logging: Set `LOG_LEVEL=DEBUG` in `.env`
 
 ---
 
