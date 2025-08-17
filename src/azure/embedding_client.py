@@ -6,9 +6,9 @@ Handles embedding generation with rate limiting and error handling.
 import asyncio
 import time
 from typing import List, Optional, Dict, Any
+
 import numpy as np
 from openai import AsyncAzureOpenAI
-from azure.identity import DefaultAzureCredential
 
 from src.utils.logging_config import get_logger, LoggerMixin, log_performance, log_error
 

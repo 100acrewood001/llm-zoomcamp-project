@@ -1,456 +1,184 @@
+
 """
-FAISS-based vector store for document embeddings.
-Handles vector indexing, similarity search, and persistence.
+ChromaDB-based vector store for document embeddings.
+Handles vector indexing, similarity search, and persistence using ChromaDB and LangChain.
 """
 
-import os
-import pickle
-import numpy as np
-import faiss
-from typing import List, Dict, Any, Optional, Tuple
-from pathlib import Path
-import json
-import time
-
+from typing import List, Dict, Any, Optional
 from src.rag.chunking_strategy import Chunk
-from src.utils.logging_config import get_logger, LoggerMixin, log_performance, log_error
+from src.utils.logging_config import get_logger, LoggerMixin
 
+# ChromaDB and LangChain imports
+import chromadb
+from chromadb.config import Settings
+from langchain_community.vectorstores import Chroma
 
-class FAISSVectorStore(LoggerMixin):
+class ChromaVectorStore(LoggerMixin):
     """
-    FAISS-based vector store with persistence and metadata management.
-    Optimized for annual report document chunks.
+    ChromaDB-based vector store with persistence and metadata management.
+    Designed for easy migration to managed vector DBs (e.g., Azure AI Search, Pinecone).
     """
-    
-    def __init__(
-        self,
-        embedding_dimension: int = 1536,  # Azure OpenAI ada-002 dimension
-        index_type: str = "flat",
-        persist_directory: str = "./data/faiss_index",
-        similarity_metric: str = "cosine"
-    ):
-        """
-        Initialize FAISS vector store.
-        
-        Args:
-            embedding_dimension: Dimension of embeddings (1536 for ada-002)
-            index_type: Type of FAISS index ("flat" or "ivf")
-            persist_directory: Directory to persist index and metadata
-            similarity_metric: Similarity metric ("cosine" or "l2")
-        """
-        self.embedding_dimension = embedding_dimension
-        self.index_type = index_type
+    def __init__(self, persist_directory: str = "./data/chroma_index"):
         self.persist_directory = persist_directory
-        self.similarity_metric = similarity_metric
-        
-        # Create persist directory
-        Path(persist_directory).mkdir(parents=True, exist_ok=True)
-        
-        # Initialize FAISS index
-        self.index = self._create_index()
-        
-        # Metadata storage
-        self.chunks_metadata: List[Dict[str, Any]] = []
-        self.chunk_id_to_index: Dict[str, int] = {}
-        
-        # Index state
-        self.is_trained = False
-        self.total_vectors = 0
-        
-        self.logger.info(
-            "FAISS vector store initialized",
-            embedding_dimension=embedding_dimension,
-            index_type=index_type,
-            similarity_metric=similarity_metric,
-            persist_directory=persist_directory
-        )
-    
-    def _create_index(self) -> faiss.Index:
-        """
-        Create appropriate FAISS index based on configuration.
-        
-        Returns:
-            FAISS index instance
-        """
-        if self.similarity_metric == "cosine":
-            # For cosine similarity, we'll normalize vectors and use inner product
-            if self.index_type == "flat":
-                index = faiss.IndexFlatIP(self.embedding_dimension)
-            else:  # ivf
-                # For IVF, we need enough vectors to train (recommended: 30x nlist)
-                nlist = 100
-                quantizer = faiss.IndexFlatIP(self.embedding_dimension)
-                index = faiss.IndexIVFFlat(quantizer, self.embedding_dimension, nlist)
-        else:  # L2 distance
-            if self.index_type == "flat":
-                index = faiss.IndexFlatL2(self.embedding_dimension)
-            else:  # ivf
-                nlist = 100
-                quantizer = faiss.IndexFlatL2(self.embedding_dimension)
-                index = faiss.IndexIVFFlat(quantizer, self.embedding_dimension, nlist)
-        
-        return index
-    
-    def add_documents(self, chunks: List[Chunk], embeddings: List[np.ndarray]):
+        self.logger.info("Chroma vector store initialized", persist_directory=persist_directory)
+        self._client = chromadb.PersistentClient(path=persist_directory, settings=Settings(allow_reset=True))
+        self._collection = self._client.get_or_create_collection("default")
+
+    def add_documents(self, chunks: List[Chunk], embeddings: List[list]):
         """
         Add documents and their embeddings to the vector store.
-        
         Args:
             chunks: List of document chunks
-            embeddings: List of corresponding embeddings
-            
-        Raises:
-            ValueError: If chunks and embeddings lists don't match
+            embeddings: List of corresponding embeddings (as lists, not numpy arrays)
         """
         if len(chunks) != len(embeddings):
             raise ValueError(f"Chunks ({len(chunks)}) and embeddings ({len(embeddings)}) count mismatch")
-        
         if not chunks:
             self.logger.warning("No chunks provided for indexing")
             return
+        ids = [chunk.chunk_id for chunk in chunks]
+        metadatas = []
         
-        start_time = time.time()
-        
-        try:
-            # Convert embeddings to numpy array
-            embedding_matrix = np.array(embeddings, dtype=np.float32)
+        for chunk in chunks:
+            # Convert page_numbers list to string for ChromaDB compatibility
+            page_numbers_str = ",".join(map(str, chunk.page_numbers)) if chunk.page_numbers else "1"
             
-            # Normalize embeddings for cosine similarity if needed
-            if self.similarity_metric == "cosine":
-                faiss.normalize_L2(embedding_matrix)
-            
-            # Train index if needed (for IVF indices)
-            if self.index_type == "ivf" and not self.is_trained:
-                min_train_size = 300  # Minimum vectors needed for IVF training
-                if len(embeddings) >= min_train_size:
-                    self.logger.info(f"Training IVF index with {len(embeddings)} vectors")
-                    self.index.train(embedding_matrix)
-                    self.is_trained = True
-                else:
-                    self.logger.warning(
-                        f"Not enough vectors to train IVF index (have {len(embeddings)}, need {min_train_size}). "
-                        f"Using flat index for now."
-                    )
-                    # Fall back to flat index
-                    self._fallback_to_flat_index()
-            
-            # Add vectors to index
-            start_index = self.total_vectors
-            self.index.add(embedding_matrix)
-            self.total_vectors += len(embeddings)
-            
-            # Store metadata
-            for i, chunk in enumerate(chunks):
-                chunk_metadata = {
-                    "chunk_id": chunk.chunk_id,
-                    "text": chunk.text,
-                    "source_document": chunk.source_document,
-                    "page_numbers": chunk.page_numbers,
-                    "metadata": chunk.metadata,
-                    "vector_index": start_index + i,
-                    "embedding_dimension": len(embeddings[i]),
-                    "added_timestamp": time.time()
-                }
-                
-                self.chunks_metadata.append(chunk_metadata)
-                self.chunk_id_to_index[chunk.chunk_id] = start_index + i
-            
-            duration = time.time() - start_time
-            self.logger.info(
-                "Documents added to vector store",
-                **log_performance(
-                    "add_documents",
-                    duration,
-                    chunks_added=len(chunks),
-                    total_vectors=self.total_vectors,
-                    index_type=self.index_type
-                )
-            )
-            
-        except Exception as e:
-            self.logger.error(
-                "Failed to add documents to vector store",
-                **log_error(e, {"chunks_count": len(chunks)})
-            )
-            raise
-    
-    def _fallback_to_flat_index(self):
-        """Fallback to flat index if IVF training fails."""
-        self.logger.info("Falling back to flat index")
-        
-        # Save existing vectors if any
-        existing_vectors = []
-        if self.total_vectors > 0:
-            existing_vectors = self.index.reconstruct_n(0, self.total_vectors)
-        
-        # Create new flat index
-        self.index = self._create_flat_index()
-        self.index_type = "flat"
-        
-        # Re-add existing vectors
-        if len(existing_vectors) > 0:
-            self.index.add(np.array(existing_vectors, dtype=np.float32))
-    
-    def _create_flat_index(self) -> faiss.Index:
-        """Create flat index as fallback."""
-        if self.similarity_metric == "cosine":
-            return faiss.IndexFlatIP(self.embedding_dimension)
-        else:
-            return faiss.IndexFlatL2(self.embedding_dimension)
-    
-    def similarity_search(
-        self, 
-        query_embedding: np.ndarray, 
-        k: int = 5,
-        score_threshold: Optional[float] = None
-    ) -> List[Tuple[Dict[str, Any], float]]:
-        """
-        Perform similarity search for query embedding.
-        
-        Args:
-            query_embedding: Query embedding vector
-            k: Number of similar documents to return
-            score_threshold: Minimum similarity score threshold
-            
-        Returns:
-            List of tuples (chunk_metadata, similarity_score)
-        """
-        if self.total_vectors == 0:
-            self.logger.warning("No vectors in index for similarity search")
-            return []
-        
-        start_time = time.time()
-        
-        try:
-            # Ensure query embedding is correct shape and type
-            query_vector = np.array([query_embedding], dtype=np.float32)
-            
-            # Normalize for cosine similarity if needed
-            if self.similarity_metric == "cosine":
-                faiss.normalize_L2(query_vector)
-            
-            # Perform search
-            k = min(k, self.total_vectors)  # Don't search for more vectors than we have
-            scores, indices = self.index.search(query_vector, k)
-            
-            # Process results
-            results = []
-            for i, (score, idx) in enumerate(zip(scores[0], indices[0])):
-                if idx == -1:  # FAISS returns -1 for empty results
-                    break
-                
-                # Apply score threshold if specified
-                if score_threshold is not None:
-                    if self.similarity_metric == "cosine" and score < score_threshold:
-                        break
-                    elif self.similarity_metric == "l2" and score > score_threshold:
-                        break
-                
-                # Get chunk metadata
-                chunk_metadata = self.chunks_metadata[idx].copy()
-                
-                # Convert similarity score if needed (for cosine, higher is better)
-                final_score = float(score)
-                if self.similarity_metric == "l2":
-                    # Convert L2 distance to similarity (lower distance = higher similarity)
-                    final_score = 1.0 / (1.0 + score)
-                
-                results.append((chunk_metadata, final_score))
-            
-            duration = time.time() - start_time
-            self.logger.debug(
-                "Similarity search completed",
-                **log_performance(
-                    "similarity_search",
-                    duration,
-                    k=k,
-                    results_count=len(results),
-                    total_vectors=self.total_vectors
-                )
-            )
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(
-                "Similarity search failed",
-                **log_error(e, {"k": k, "total_vectors": self.total_vectors})
-            )
-            raise
-    
-    def get_chunk_by_id(self, chunk_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get chunk metadata by chunk ID.
-        
-        Args:
-            chunk_id: ID of the chunk to retrieve
-            
-        Returns:
-            Chunk metadata or None if not found
-        """
-        if chunk_id in self.chunk_id_to_index:
-            index = self.chunk_id_to_index[chunk_id]
-            return self.chunks_metadata[index].copy()
-        return None
-    
-    def save_index(self, index_path: Optional[str] = None) -> str:
-        """
-        Save FAISS index and metadata to disk.
-        
-        Args:
-            index_path: Optional custom path for index files
-            
-        Returns:
-            Path where index was saved
-        """
-        if index_path is None:
-            index_path = os.path.join(self.persist_directory, "faiss_index.index")
-        
-        start_time = time.time()
-        
-        try:
-            # Save FAISS index
-            faiss.write_index(self.index, index_path)
-            
-            # Save metadata
-            metadata_path = index_path.replace(".index", "_metadata.json")
+            # Build metadata dict with ChromaDB-compatible values
             metadata = {
-                "chunks_metadata": self.chunks_metadata,
-                "chunk_id_to_index": self.chunk_id_to_index,
-                "total_vectors": self.total_vectors,
-                "embedding_dimension": self.embedding_dimension,
-                "index_type": self.index_type,
-                "similarity_metric": self.similarity_metric,
-                "is_trained": self.is_trained,
-                "save_timestamp": time.time()
+                "source_document": chunk.source_document,
+                "page_numbers": page_numbers_str,  # Convert list to comma-separated string
             }
             
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2, default=str)
+            # Add chunk metadata, ensuring all values are ChromaDB-compatible
+            if chunk.metadata:
+                for key, value in chunk.metadata.items():
+                    # Convert complex types to strings
+                    if isinstance(value, (list, dict)):
+                        metadata[key] = str(value)
+                    elif isinstance(value, (str, int, float, bool)) or value is None:
+                        metadata[key] = value
+                    else:
+                        # Convert any other type to string
+                        metadata[key] = str(value)
             
-            duration = time.time() - start_time
-            self.logger.info(
-                "Vector store saved successfully",
-                **log_performance(
-                    "save_index",
-                    duration,
-                    index_path=index_path,
-                    total_vectors=self.total_vectors
-                )
-            )
-            
-            return index_path
-            
-        except Exception as e:
-            self.logger.error(
-                "Failed to save vector store",
-                **log_error(e, {"index_path": index_path})
-            )
-            raise
-    
-    def load_index(self, index_path: Optional[str] = None) -> bool:
-        """
-        Load FAISS index and metadata from disk.
+            metadatas.append(metadata)
         
+        documents = [chunk.text for chunk in chunks]
+        self._collection.add(
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+        self.logger.info("Documents added to Chroma vector store", count=len(chunks))
+
+    def similarity_search(self, query_embedding: list, k: int = 5, score_threshold: float = None) -> List[Dict[str, Any]]:
+        """
+        Perform similarity search for query embedding.
         Args:
-            index_path: Optional custom path for index files
-            
+            query_embedding: Query embedding vector (as list)
+            k: Number of similar documents to return
+            score_threshold: Minimum similarity score threshold (optional)
         Returns:
-            True if successfully loaded, False otherwise
+            List of dicts with document, metadata, and distance
         """
-        if index_path is None:
-            index_path = os.path.join(self.persist_directory, "faiss_index.index")
-        
-        if not os.path.exists(index_path):
-            self.logger.warning(f"Index file not found: {index_path}")
-            return False
-        
-        start_time = time.time()
-        
-        try:
-            # Load FAISS index
-            self.index = faiss.read_index(index_path)
+        results = self._collection.query(
+            query_embeddings=[query_embedding],
+            n_results=k,
+            include=["documents", "metadatas", "distances"]
+        )
+        hits = []
+        for i in range(len(results["ids"][0])):
+            distance = results["distances"][0][i]
             
-            # Load metadata
-            metadata_path = index_path.replace(".index", "_metadata.json")
-            if os.path.exists(metadata_path):
-                with open(metadata_path, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
+            # Apply score threshold if specified
+            # Note: ChromaDB returns distances (lower is better), 
+            # so we convert to similarity score (1 - distance) for threshold comparison
+            similarity_score = 1.0 - distance
+            if score_threshold is not None and similarity_score < score_threshold:
+                continue
                 
-                self.chunks_metadata = metadata["chunks_metadata"]
-                self.chunk_id_to_index = metadata["chunk_id_to_index"]
-                self.total_vectors = metadata["total_vectors"]
-                self.is_trained = metadata.get("is_trained", False)
-                
-                # Validate loaded configuration
-                if metadata["embedding_dimension"] != self.embedding_dimension:
-                    self.logger.warning(
-                        f"Embedding dimension mismatch: expected {self.embedding_dimension}, "
-                        f"got {metadata['embedding_dimension']}"
-                    )
-            
-            duration = time.time() - start_time
-            self.logger.info(
-                "Vector store loaded successfully",
-                **log_performance(
-                    "load_index",
-                    duration,
-                    index_path=index_path,
-                    total_vectors=self.total_vectors
-                )
-            )
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(
-                "Failed to load vector store",
-                **log_error(e, {"index_path": index_path})
-            )
-            return False
-    
+            hit = {
+                "id": results["ids"][0][i],
+                "document": results["documents"][0][i],
+                "metadata": results["metadatas"][0][i],
+                "distance": distance
+            }
+            hits.append(hit)
+        self.logger.info("Similarity search completed", results_count=len(hits))
+        return hits
+
+    def clear(self):
+        """Clear all vectors and metadata from the store."""
+        self._client.reset()
+        self._collection = self._client.get_or_create_collection("default")
+        self.logger.info("Chroma vector store cleared")
+
     def get_stats(self) -> Dict[str, Any]:
-        """
-        Get vector store statistics.
-        
-        Returns:
-            Dictionary with store statistics
-        """
+        """Get vector store statistics."""
+        count = self._collection.count()
         return {
-            "total_vectors": self.total_vectors,
-            "embedding_dimension": self.embedding_dimension,
-            "index_type": self.index_type,
-            "similarity_metric": self.similarity_metric,
-            "is_trained": self.is_trained,
-            "unique_documents": len(set(chunk["source_document"] for chunk in self.chunks_metadata)),
-            "chunks_count": len(self.chunks_metadata),
+            "total_vectors": count,
             "persist_directory": self.persist_directory
         }
     
-    def clear(self):
-        """Clear all vectors and metadata from the store."""
-        self.index = self._create_index()
-        self.chunks_metadata = []
-        self.chunk_id_to_index = {}
-        self.total_vectors = 0
-        self.is_trained = False
-        
-        self.logger.info("Vector store cleared")
-
+    def get_documents_info(self) -> List[Dict[str, Any]]:
+        """Get information about all stored documents."""
+        try:
+            # Query all documents from ChromaDB
+            results = self._collection.get(include=["documents", "metadatas"])
+            
+            if not results["ids"]:
+                return []
+            
+            # Group by source document
+            docs_map = {}
+            for i, doc_id in enumerate(results["ids"]):
+                metadata = results["metadatas"][i]
+                source_doc = metadata.get("source_document", "unknown")
+                
+                if source_doc not in docs_map:
+                    docs_map[source_doc] = {
+                        "filename": source_doc,
+                        "chunks": [],
+                        "pages": set()
+                    }
+                
+                # Parse page_numbers from string back to list
+                page_numbers_str = metadata.get("page_numbers", "1")
+                try:
+                    page_numbers = [int(p.strip()) for p in page_numbers_str.split(",") if p.strip()]
+                except (ValueError, AttributeError):
+                    page_numbers = [1]
+                
+                docs_map[source_doc]["chunks"].append({
+                    "chunk_id": doc_id,
+                    "metadata": metadata
+                })
+                docs_map[source_doc]["pages"].update(page_numbers)
+            
+            # Convert to list format
+            documents_info = []
+            for doc_name, doc_data in docs_map.items():
+                documents_info.append({
+                    "filename": doc_name,
+                    "chunks_count": len(doc_data["chunks"]),
+                    "pages": sorted(list(doc_data["pages"])),
+                    "processing_date": 0  # ChromaDB doesn't store timestamps by default
+                })
+            
+            return documents_info
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get documents info: {e}")
+            return []
 
 if __name__ == "__main__":
     # Test vector store
-    import numpy as np
-    
-    # Create test vector store
-    vector_store = FAISSVectorStore(
-        embedding_dimension=5,  # Small dimension for testing
-        persist_directory="./test_data/faiss_test"
-    )
-    
-    # Create test chunks and embeddings
     from src.rag.chunking_strategy import Chunk
-    
+    # Create test vector store
+    vector_store = ChromaVectorStore(persist_directory="./test_data/chroma_test")
+    # Create test chunks and embeddings
     test_chunks = [
         Chunk(
             text="Revenue increased by 25% this quarter",
@@ -463,7 +191,7 @@ if __name__ == "__main__":
         ),
         Chunk(
             text="Operating expenses remained stable",
-            chunk_id="test_2", 
+            chunk_id="test_2",
             source_document="test.pdf",
             page_numbers=[1],
             start_char=36,
@@ -471,28 +199,19 @@ if __name__ == "__main__":
             metadata={"type": "financial"}
         )
     ]
-    
     test_embeddings = [
-        np.random.rand(5).astype(np.float32),
-        np.random.rand(5).astype(np.float32)
+        [0.1, 0.2, 0.3, 0.4, 0.5],
+        [0.5, 0.4, 0.3, 0.2, 0.1]
     ]
-    
     # Test adding documents
     vector_store.add_documents(test_chunks, test_embeddings)
-    print(f"Added {vector_store.total_vectors} vectors")
-    
+    print(f"Added {vector_store.get_stats()['total_vectors']} vectors")
     # Test similarity search
-    query_embedding = np.random.rand(5).astype(np.float32)
+    query_embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
     results = vector_store.similarity_search(query_embedding, k=2)
-    
     print(f"\nSimilarity search results ({len(results)}):")
-    for chunk_metadata, score in results:
-        print(f"  Score: {score:.4f}, Text: {chunk_metadata['text'][:50]}...")
-    
-    # Test save/load
-    save_path = vector_store.save_index()
-    print(f"\nSaved index to: {save_path}")
-    
+    for hit in results:
+        print(f"  Distance: {hit['distance']:.4f}, Text: {hit['document'][:50]}...")
     # Test stats
     stats = vector_store.get_stats()
     print(f"\nVector store stats: {stats}")

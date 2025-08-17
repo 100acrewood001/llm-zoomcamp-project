@@ -17,13 +17,15 @@ load_dotenv()
 
 class AzureOpenAISettings(BaseSettings):
     """Azure OpenAI specific settings."""
-    endpoint: str = Field(..., env="AZURE_OPENAI_ENDPOINT")
-    api_key: str = Field(..., env="AZURE_OPENAI_API_KEY") 
-    api_version: str = Field(default="2024-02-01", env="AZURE_OPENAI_API_VERSION")
-    embedding_deployment: str = Field(default="text-embedding-ada-002", env="AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
-    chat_deployment: str = Field(default="gpt-4", env="AZURE_OPENAI_CHAT_DEPLOYMENT")
+    endpoint: str = Field(..., alias="AZURE_OPENAI_ENDPOINT")
+    api_key: str = Field(..., alias="AZURE_OPENAI_API_KEY") 
+    api_version: str = Field(default="2024-02-01", alias="AZURE_OPENAI_API_VERSION")
+    embedding_deployment: str = Field(default="text-embedding-ada-002", alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+    chat_deployment: str = Field(default="gpt-4", alias="AZURE_OPENAI_CHAT_DEPLOYMENT")
     max_tokens: int = Field(default=4000)
     temperature: float = Field(default=0.1)
+    
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 class RAGSettings(BaseSettings):
@@ -31,7 +33,7 @@ class RAGSettings(BaseSettings):
     chunk_size: int = Field(default=1000)
     chunk_overlap: int = Field(default=200)
     top_k: int = Field(default=5)
-    score_threshold: float = Field(default=0.7)
+    score_threshold: float = Field(default=0.5)  # Lowered from 0.7 to 0.5
     persist_directory: str = Field(default="./data/faiss_index")
 
 
@@ -84,11 +86,22 @@ class Config:
     
     def _load_yaml_settings(self):
         """Load additional settings from YAML that aren't covered by Pydantic."""
-        # Override Pydantic settings with YAML values if present
+        # Only use YAML values if environment variables are not set
+        # Environment variables take precedence over YAML settings
         if azure_config := self._raw_config.get('azure', {}).get('openai', {}):
+            # Only override if no environment variable was set
+            env_vars = {
+                'embedding_deployment': os.getenv('AZURE_OPENAI_EMBEDDING_DEPLOYMENT'),
+                'chat_deployment': os.getenv('AZURE_OPENAI_CHAT_DEPLOYMENT'),
+                'endpoint': os.getenv('AZURE_OPENAI_ENDPOINT'),
+                'api_version': os.getenv('AZURE_OPENAI_API_VERSION')
+            }
+            
             for key, value in azure_config.items():
                 if hasattr(self.azure_openai, key):
-                    setattr(self.azure_openai, key, value)
+                    # Only use YAML value if no environment variable is set
+                    if key not in env_vars or env_vars[key] is None:
+                        setattr(self.azure_openai, key, value)
         
         if rag_config := self._raw_config.get('rag', {}):
             # Update chunking settings
@@ -153,13 +166,16 @@ class Config:
             Path(directory).mkdir(parents=True, exist_ok=True)
 
 
-# Global configuration instance
-config = Config()
+# Global configuration instance (lazy-loaded)
+_config: Optional[Config] = None
 
 
 def get_config() -> Config:
     """Get the global configuration instance."""
-    return config
+    global _config
+    if _config is None:
+        _config = Config()
+    return _config
 
 
 def load_environment_file(env_file: str = ".env"):

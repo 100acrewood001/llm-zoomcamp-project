@@ -44,12 +44,12 @@ def create_virtual_environment():
     """Create a virtual environment if it doesn't exist."""
     print_step(2, "Setting up virtual environment...")
     
-    venv_path = Path("venv")
+    venv_path = Path(".venv")
     if venv_path.exists():
         print("✅ Virtual environment already exists.")
         return True
     
-    success, stdout, stderr = run_command(f"{sys.executable} -m venv venv")
+    success, stdout, stderr = run_command(f"{sys.executable} -m venv .venv")
     if success:
         print("✅ Virtual environment created successfully.")
         return True
@@ -60,9 +60,9 @@ def create_virtual_environment():
 def get_pip_command():
     """Get the appropriate pip command for the current platform."""
     if sys.platform == "win32":
-        return "venv\\Scripts\\pip"
+        return ".venv\\Scripts\\pip"
     else:
-        return "venv/bin/pip"
+        return ".venv/bin/pip"
 
 def install_dependencies():
     """Install required dependencies."""
@@ -95,6 +95,11 @@ def check_environment_file():
     
     if env_file.exists():
         print("✅ .env file exists.")
+        # Warn user if endpoint is not set or is malformed
+        with open(env_file, "r") as f:
+            env_content = f.read()
+        if "AZURE_OPENAI_ENDPOINT" not in env_content or "your-endpoint-url" in env_content:
+            print("⚠️  Please ensure AZURE_OPENAI_ENDPOINT is set and valid in your .env file.")
         return True
     
     if env_example.exists():
@@ -102,7 +107,7 @@ def check_environment_file():
         shutil.copy(env_example, env_file)
         print("✅ .env file created from template.")
         print("\n⚠️  IMPORTANT: Please edit .env file with your Azure OpenAI credentials:")
-        print("   - AZURE_OPENAI_ENDPOINT")
+        print("   - AZURE_OPENAI_ENDPOINT (must be a valid URL, e.g. https://<resource>.openai.azure.com)")
         print("   - AZURE_OPENAI_API_KEY")
         print("   - AZURE_OPENAI_API_VERSION")
         return False  # Need manual configuration

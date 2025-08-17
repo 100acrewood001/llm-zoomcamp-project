@@ -12,7 +12,7 @@ from src.azure.embedding_client import AzureEmbeddingClient
 from src.azure.chat_client import AzureChatClient
 from src.extractors.text_extractor import TextExtractor, Document
 from src.rag.chunking_strategy import BasicChunkingStrategy, Chunk
-from src.rag.vector_store import FAISSVectorStore
+from src.rag.vector_store import ChromaVectorStore
 from src.utils.config import get_config
 from src.utils.logging_config import get_logger, LoggerMixin, log_performance, log_error
 
@@ -79,14 +79,9 @@ class MVPOrchestrator(LoggerMixin):
             )
             
             # Vector store
-            self.vector_store = FAISSVectorStore(
-                embedding_dimension=1536,  # Ada-002 dimension
-                index_type="flat",  # Start with flat for MVP
+            self.vector_store = ChromaVectorStore(
                 persist_directory=self.config.rag.persist_directory
             )
-            
-            # Try to load existing index
-            self.vector_store.load_index()
             
             self.logger.info("All components initialized successfully")
             
@@ -133,9 +128,8 @@ class MVPOrchestrator(LoggerMixin):
             self.logger.info("Adding chunks to vector store...")
             self.vector_store.add_documents(chunks, embeddings)
             
-            # Step 5: Save vector store
-            self.logger.info("Saving vector store...")
-            index_path = self.vector_store.save_index()
+            # Vector store automatically persists in ChromaDB
+            self.logger.info("Document successfully added to vector store")
             
             # Update processed documents registry
             self.processed_documents[document.filename] = document.filename
@@ -149,7 +143,7 @@ class MVPOrchestrator(LoggerMixin):
                 "chunks_created": len(chunks),
                 "embeddings_generated": len(embeddings),
                 "processing_time_seconds": duration,
-                "index_path": index_path,
+                "vector_store": "ChromaDB (auto-persisted)",
                 "document_metadata": document.metadata
             }
             
@@ -188,7 +182,7 @@ class MVPOrchestrator(LoggerMixin):
             ValueError: If no document is processed
             Exception: If query processing fails
         """
-        if self.vector_store.total_vectors == 0:
+        if self.vector_store.get_stats()["total_vectors"] == 0:
             raise ValueError("No documents have been processed. Please process a document first.")
         
         start_time = time.time()
@@ -262,7 +256,7 @@ class MVPOrchestrator(LoggerMixin):
         Build context string from search results.
         
         Args:
-            search_results: List of (chunk_metadata, score) tuples
+            search_results: List of hit dictionaries from ChromaVectorStore
             query: Original query for context optimization
             
         Returns:
@@ -273,10 +267,19 @@ class MVPOrchestrator(LoggerMixin):
         total_chars = 0
         max_context_chars = 4000  # Leave room for query and system prompt
         
-        for i, (chunk_metadata, score) in enumerate(search_results):
-            chunk_text = chunk_metadata["text"]
-            source_doc = chunk_metadata["source_document"]
-            page_nums = chunk_metadata["page_numbers"]
+        for i, hit in enumerate(search_results):
+            chunk_text = hit["document"]
+            chunk_metadata = hit["metadata"]
+            distance = hit["distance"]
+            
+            source_doc = chunk_metadata.get("source_document", "unknown")
+            page_numbers_str = chunk_metadata.get("page_numbers", "1")
+            
+            # Parse page numbers back from string
+            try:
+                page_nums = [int(p.strip()) for p in page_numbers_str.split(",") if p.strip()]
+            except (ValueError, AttributeError):
+                page_nums = [1]
             
             # Check if adding this chunk would exceed limit
             if total_chars + len(chunk_text) > max_context_chars and context_parts:
@@ -288,12 +291,15 @@ class MVPOrchestrator(LoggerMixin):
             total_chars += len(context_part)
             
             # Build citation info
+            # Convert distance to similarity score (1 - distance)
+            similarity_score = 1.0 - distance
+            
             citation = {
                 "citation_id": i + 1,
                 "source_document": source_doc,
                 "page_numbers": page_nums,
-                "relevance_score": float(score),
-                "chunk_id": chunk_metadata["chunk_id"],
+                "relevance_score": float(similarity_score),
+                "chunk_id": hit["id"],
                 "text_preview": chunk_text[:150] + "..." if len(chunk_text) > 150 else chunk_text
             }
             citations.append(citation)
@@ -329,7 +335,9 @@ class MVPOrchestrator(LoggerMixin):
             Complete query response dictionary
         """
         # Calculate confidence based on search scores and response quality
-        avg_score = sum(score for _, score in search_results) / len(search_results)
+        # Convert distances to similarity scores and calculate average
+        similarity_scores = [1.0 - hit["distance"] for hit in search_results]
+        avg_score = sum(similarity_scores) / len(similarity_scores)
         confidence = min(avg_score * 1.2, 1.0)  # Boost confidence slightly, cap at 1.0
         
         # Determine if response seems complete
@@ -430,29 +438,27 @@ class MVPOrchestrator(LoggerMixin):
         Returns:
             List of processed document information
         """
-        documents_info = []
-        
-        for filename in self.processed_documents.keys():
-            # Get document stats from vector store
-            doc_chunks = [
-                chunk for chunk in self.vector_store.chunks_metadata
-                if chunk["source_document"] == filename
-            ]
+        try:
+            # Get document info from vector store (this is the source of truth)
+            documents_info = self.vector_store.get_documents_info()
             
-            if doc_chunks:
-                doc_info = {
-                    "filename": filename,
-                    "chunks_count": len(doc_chunks),
-                    "pages": list(set(
-                        page_num 
-                        for chunk in doc_chunks 
-                        for page_num in chunk.get("page_numbers", [])
-                    )),
-                    "processing_date": min(chunk.get("added_timestamp", 0) for chunk in doc_chunks)
-                }
-                documents_info.append(doc_info)
-        
-        return documents_info
+            # Add processing timestamps - use current time as placeholder since 
+            # ChromaDB doesn't store timestamps by default
+            current_time = time.time()
+            for doc_info in documents_info:
+                filename = doc_info["filename"]
+                # Always set a processing date for display purposes
+                doc_info["processing_date"] = current_time
+                
+                # Also update our in-memory registry to stay in sync
+                if filename not in self.processed_documents:
+                    self.processed_documents[filename] = filename
+            
+            return documents_info
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get processed documents: {e}")
+            return []
 
 
 if __name__ == "__main__":

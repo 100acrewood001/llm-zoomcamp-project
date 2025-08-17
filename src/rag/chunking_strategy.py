@@ -154,14 +154,14 @@ class BasicChunkingStrategy(LoggerMixin):
             # Generate unique chunk ID
             chunk_id = f"{document.filename}_p{page.page_number}_c{i+1}"
             
-            # Create chunk metadata
+            # Create chunk metadata - ensure ChromaDB compatibility
             chunk_metadata = {
                 "source_document": document.filename,
                 "source_page": page.page_number,
                 "chunk_index": i,
                 "chunk_type": self._classify_chunk_content(chunk_text),
-                "page_metadata": page.metadata,
-                "document_metadata": document.metadata
+                "page_metadata": str(page.metadata) if page.metadata else "",
+                "document_metadata": str(document.metadata) if document.metadata else ""
             }
             
             # Create chunk object

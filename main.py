@@ -13,17 +13,20 @@ from typing import Optional
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.utils.config import get_config, load_environment_file
+# Load environment variables FIRST before importing config
+from src.utils.config import load_environment_file
+load_environment_file()
+
+from src.utils.config import get_config
 from src.utils.logging_config import setup_logging, get_logger
 from src.orchestrator.mvp_orchestrator import MVPOrchestrator
 
 
 def setup_environment():
     """Setup environment and configuration."""
-    # Load environment variables
-    load_environment_file()
+    # Environment variables are already loaded at module import
     
-    # Get configuration
+    # Get configuration (which should now have the env vars loaded)
     config = get_config()
     
     # Setup logging

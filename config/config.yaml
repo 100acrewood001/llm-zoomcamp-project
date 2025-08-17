@@ -1,11 +1,11 @@
 # Azure OpenAI Configuration
 azure:
   openai:
-    endpoint: "https://your-openai-resource.openai.azure.com/"
+    endpoint: "https://cog-openai-od-ed.openai.azure.com/"
     api_version: "2024-02-01"
     # Keys will be loaded from environment variables or Azure Key Vault
-    embedding_deployment: "text-embedding-ada-002"
-    chat_deployment: "gpt-4"
+    embedding_deployment: "text-embedding-ada-002-od-ed"
+    chat_deployment: "gpt-4.1-mini"
     max_tokens: 4000
     temperature: 0.1
   
@@ -23,7 +23,7 @@ rag:
   
   retrieval:
     top_k: 5
-    score_threshold: 0.7
+    score_threshold: 0.5  # Lowered from 0.7 to 0.5 for better results
   
   vector_store:
     type: "faiss"

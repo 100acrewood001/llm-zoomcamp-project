@@ -361,7 +361,7 @@ async def get_system_stats(orchestrator: MVPOrchestrator = Depends(get_orchestra
             "processed_documents_count": len(processed_docs),
             "total_pages_processed": sum(len(doc["pages"]) for doc in processed_docs),
             "api_version": "1.0.0",
-            "system_ready": orchestrator.vector_store.total_vectors > 0
+            "system_ready": vector_stats["total_vectors"] > 0
         }
         
         return stats
